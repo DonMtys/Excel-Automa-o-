@@ -512,13 +512,32 @@ def build_analysis(df: pd.DataFrame, mapping: dict[str, str | None]) -> dict[str
     hotmail_like = int(domain_series.str.contains(r"hotmail|live|outlook|msn", regex=True).sum())
     yahoo_like = int(domain_series.str.contains(r"yahoo|ymail|yahool", regex=True).sum())
 
-    doc_emails = (
-        base[(base["CPF_CNPJ_NORM"] != "") & (base["E_MAIL_NORM"] != "")]
-        .groupby("CPF_CNPJ_NORM")["E_MAIL_NORM"]
-        .nunique()
+    per_client_email_df = base[(base["CPF_CNPJ_NORM"] != "") & (base["E_MAIL_NORM"] != "")].copy()
+    doc_emails = per_client_email_df.groupby("CPF_CNPJ_NORM")["E_MAIL_NORM"].nunique()
+    clients_multi_email_df = (
+        per_client_email_df.groupby("CPF_CNPJ_NORM")
+        .agg(
+            NOME=("NOME", lambda s: next((v for v in s if normalize_text(v) != ""), "")),
+            REGIOES=(
+                "REGIAO",
+                lambda s: " | ".join(sorted({normalize_text(v) for v in s if normalize_text(v) != ""})),
+            ),
+            QTD_EMAILS=("E_MAIL_NORM", "nunique"),
+            EMAILS=("E_MAIL_NORM", lambda s: " | ".join(sorted(set(s)))),
+        )
+        .reset_index()
+        .sort_values(by=["QTD_EMAILS", "CPF_CNPJ_NORM"], ascending=[False, True])
     )
+    clients_multi_email_df = clients_multi_email_df[clients_multi_email_df["QTD_EMAILS"] >= 2].copy()
+    clients_multi_email_df["NOME"] = clients_multi_email_df["NOME"].astype(str).str.upper()
+    clients_multi_email_df = clients_multi_email_df[
+        ["CPF_CNPJ_NORM", "NOME", "REGIOES", "QTD_EMAILS", "EMAILS"]
+    ].reset_index(drop=True)
+
     unique_clients = int(base.loc[base["CPF_CNPJ_NORM"] != "", "CPF_CNPJ_NORM"].nunique())
-    clients_with_multi_email = int((doc_emails > 1).sum()) if len(doc_emails) else 0
+    clients_with_multi_email = int(len(clients_multi_email_df))
+    clients_exactly_two = int((doc_emails == 2).sum()) if len(doc_emails) else 0
+    clients_three_or_more = int((doc_emails >= 3).sum()) if len(doc_emails) else 0
 
     metrics = {
         "total_rows": int(len(base)),
@@ -530,6 +549,8 @@ def build_analysis(df: pd.DataFrame, mapping: dict[str, str | None]) -> dict[str
         "suspect_rows": int(len(suspect_rows)),
         "unique_clients": unique_clients,
         "clients_multi_email": clients_with_multi_email,
+        "clients_exactly_two": clients_exactly_two,
+        "clients_three_or_more": clients_three_or_more,
         "gmail_like": gmail_like,
         "hotmail_like": hotmail_like,
         "yahoo_like": yahoo_like,
@@ -545,6 +566,7 @@ def build_analysis(df: pd.DataFrame, mapping: dict[str, str | None]) -> dict[str
         "invalid_rows": invalid_rows,
         "email_nome_regiao": email_nome_regiao,
         "email_primeiro_nome_regiao": email_primeiro_nome_regiao,
+        "clients_multi_email_df": clients_multi_email_df,
         "top_domains": top_domains,
     }
 
@@ -559,6 +581,11 @@ def render_download(label: str, df: pd.DataFrame, file_name: str) -> None:
 
 def format_number(value: int) -> str:
     return f"{value:,}"
+
+
+def format_currency_br(value: float) -> str:
+    text = f"{value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    return f"R$ {text}"
 
 
 def inject_styles() -> None:
@@ -1105,6 +1132,30 @@ def main() -> None:
             hide_index=True,
         )
 
+        st.markdown("**Simulador de custo (1 envio por cliente)**")
+        sim_cols = st.columns([1.3, 1, 1, 1])
+        with sim_cols[0]:
+            custo_por_mil = st.number_input(
+                "Custo por 1.000 envios (R$)",
+                min_value=0.0,
+                value=20.0,
+                step=1.0,
+                key="custo_por_mil_envios",
+            )
+        custo_unitario = custo_por_mil / 1000.0
+        custo_total_clientes = filtered_total_clients * custo_unitario
+        custo_sem_repeticao = filtered_clients_unique_no_repeat * custo_unitario
+        custo_clientes_2mais = clients_two_or_more * custo_unitario
+        with sim_cols[1]:
+            st.metric("Todos os clientes", format_currency_br(custo_total_clientes))
+        with sim_cols[2]:
+            st.metric("Sem e-mail duplicado", format_currency_br(custo_sem_repeticao))
+        with sim_cols[3]:
+            st.metric("Clientes 2+ e-mails", format_currency_br(custo_clientes_2mais))
+        st.caption(
+            "Estimativa com 1 disparo por cliente usando o valor informado por 1.000 envios."
+        )
+
         st.markdown('<div class="section-head">Painel interativo</div>', unsafe_allow_html=True)
 
         chart_col_1, chart_col_2, chart_col_3 = st.columns([1.1, 1.1, 1.8])
@@ -1412,6 +1463,10 @@ def main() -> None:
             '<div class="tiny-note">Amostras para revisao manual de e-mails com risco de erro ou inconsistencias.</div>',
             unsafe_allow_html=True,
         )
+        st.info(
+            "Atividade real de caixa postal (ativo/inativo) exige validacao externa (SMTP/API). "
+            "Nesta plataforma, hoje validamos formato, suspeitos e duplicidade."
+        )
         q1, q2 = st.columns(2)
         with q1:
             st.markdown("**Amostra de e-mails suspeitos**")
@@ -1460,6 +1515,13 @@ def main() -> None:
                 result["email_primeiro_nome_regiao"],
                 "emails_primeiro_nome_regiao.csv",
             )
+        st.markdown("---")
+        st.markdown("**Clientes com mais de um e-mail**")
+        render_download(
+            "Baixar clientes com 2+ e-mails",
+            result["clients_multi_email_df"],
+            "clientes_com_2_ou_mais_emails.csv",
+        )
 
 
 if __name__ == "__main__":
