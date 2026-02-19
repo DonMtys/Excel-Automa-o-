@@ -572,7 +572,7 @@ def build_analysis(df: pd.DataFrame, mapping: dict[str, str | None]) -> dict[str
 
 
 def to_csv_bytes(df: pd.DataFrame) -> bytes:
-    return df.to_csv(index=False).encode("utf-8")
+    return df.to_csv(index=False).encode("utf-8-sig")
 
 
 def render_download(label: str, df: pd.DataFrame, file_name: str) -> None:
