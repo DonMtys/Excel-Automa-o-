@@ -1,0 +1,17 @@
+RESUMO COMPLETO BATMAN.CSV
+Arquivo: Batman.csv
+Total de linhas validas (5 colunas): 47834
+Linhas com colunas fora do padrao: 0
+CPF/CNPJ unicos: 24502
+Nomes unicos: 24410
+Emails unicos: 40891
+Emails unicos validos: 40775
+Regioes unicas: 16
+Linhas com email ausente: 0
+Linhas com email invalido: 127
+Linhas com espaco no inicio/fim do email: 5
+Linhas com tab no email: 2
+Linhas duplicadas exatas: 2803
+Emails repetidos (distintos): 3759
+Linhas envolvendo emails repetidos: 10702
+Emails presentes em mais de uma regiao: 162

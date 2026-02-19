@@ -1,0 +1,8 @@
+RESUMO DA ANALISE
+Arquivo de origem: E_MAIL-CLIENTES-18022026.csv
+Total de linhas: 183545
+E-mails unicos: 167710
+E-mails invalidos: 276
+E-mails ausentes: 0
+E-mails com espacos no inicio/fim: 280
+Linhas duplicadas exatas: 5970
