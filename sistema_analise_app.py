@@ -475,6 +475,25 @@ def build_analysis(df: pd.DataFrame, mapping: dict[str, str | None]) -> dict[str
     unique_email_rows = base[base["E_MAIL_NORM"] != ""].drop_duplicates(subset=["E_MAIL_NORM"], keep="first").copy()
     suspect_rows = base[base["EMAIL_SUSPEITO"]].copy()
     invalid_rows = base[(base["E_MAIL_NORM"] != "") & (~base["EMAIL_FORMATO_VALIDO"])].copy()
+    email_nome_regiao = unique_email_rows[["E_MAIL_NORM", "NOME", "REGIAO"]].copy()
+    email_nome_regiao["email"] = email_nome_regiao["E_MAIL_NORM"].str.strip().str.lower()
+    email_nome_regiao["nome"] = (
+        email_nome_regiao["NOME"].str.strip().str.replace(r"\s+", " ", regex=True).str.upper()
+    )
+    email_nome_regiao["região"] = email_nome_regiao["REGIAO"].str.strip().str.replace(r"\s+", " ", regex=True)
+    email_nome_regiao = email_nome_regiao[["email", "nome", "região"]]
+    email_nome_regiao = email_nome_regiao[
+        (email_nome_regiao["email"] != "")
+        & (email_nome_regiao["nome"] != "")
+        & (email_nome_regiao["região"] != "")
+    ].copy()
+    email_nome_regiao = email_nome_regiao.drop_duplicates(subset=["email"], keep="first").reset_index(drop=True)
+
+    email_primeiro_nome_regiao = email_nome_regiao.copy()
+    email_primeiro_nome_regiao["nome"] = email_primeiro_nome_regiao["nome"].str.split().str[0].fillna("")
+    email_primeiro_nome_regiao = email_primeiro_nome_regiao[
+        email_primeiro_nome_regiao["nome"] != ""
+    ].reset_index(drop=True)
 
     repeated_summary = (
         repeated_email_counts.rename_axis("E_MAIL_NORM")
@@ -524,6 +543,8 @@ def build_analysis(df: pd.DataFrame, mapping: dict[str, str | None]) -> dict[str
         "unique_email_rows": unique_email_rows,
         "suspect_rows": suspect_rows,
         "invalid_rows": invalid_rows,
+        "email_nome_regiao": email_nome_regiao,
+        "email_primeiro_nome_regiao": email_primeiro_nome_regiao,
         "top_domains": top_domains,
     }
 
@@ -1424,6 +1445,21 @@ def main() -> None:
         with d3:
             render_download("Baixar e-mails suspeitos", result["suspect_rows"], "emails_suspeitos.csv")
             render_download("Baixar e-mails invalidos", result["invalid_rows"], "emails_invalidos.csv")
+        st.markdown("---")
+        st.markdown("**Listas prontas para contato (`email,nome,região`)**")
+        e1, e2 = st.columns(2)
+        with e1:
+            render_download(
+                "Baixar e-mail + nome completo + regiao",
+                result["email_nome_regiao"],
+                "emails_nome_completo_regiao.csv",
+            )
+        with e2:
+            render_download(
+                "Baixar e-mail + primeiro nome + regiao",
+                result["email_primeiro_nome_regiao"],
+                "emails_primeiro_nome_regiao.csv",
+            )
 
 
 if __name__ == "__main__":
